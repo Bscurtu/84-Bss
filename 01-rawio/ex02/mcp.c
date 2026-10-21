@@ -2,10 +2,10 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <sys/stat.h>
-#include <stdio.h>
 
-int	et_strcmp(char *str1, char *str2)
+int	ef_strcmp(char *str1, char *str2)
 {
 	while (*str1 && *str2)
 	{
@@ -19,7 +19,7 @@ int	et_strcmp(char *str1, char *str2)
 	return ((int) *str1 - (int) *str2);
 }
 
-int	et_atoi(char *ptr)
+int	ef_atoi(char *ptr)
 {
 	int	total;
 
@@ -37,52 +37,88 @@ int	et_atoi(char *ptr)
 	return (total);
 }
 
-void pasting(int read_fd, int write_fd, char *buffer, int buffer_size)
+void putStr(char *str)
+{
+    if (str)
+        while (*str)
+        {
+            write(2, str, 1);
+            str++;
+        }
+}
+
+void error(int error)
+{
+    write(2, "Error while copying: ", 21);
+    putStr(strerror(error));
+}
+
+int pasting(int readFd, int writeFd, char *buffer, int bufferSize)
 {
     int readed;
+    int pasted;
+    int return_value;
 
     readed = 1;
     while (readed > 0)
     {
-        readed = read(read_fd, buffer, buffer_size);
+        pasted = 0;
+        readed = read(readFd, buffer, bufferSize);
         if (readed > 0)
-            write(write_fd, buffer, readed);
+            while (pasted < readed)
+            {
+                return_value = write(writeFd, buffer, readed);
+                if (return_value < 0)
+                {
+                    error(errno);
+                    return (1);
+                }
+                pasted += return_value;
+            }
     }
+    return (0);
 }
 
-int check_stat(char **argv, int pos)
+int check_stat(struct stat *from, struct stat *to)
 {
     /* This part is new to me */
     /* Inode is the index number of a file */
     /* The st_dev is the device or partition that this files is saved in */
     /* We will create 2 structs, and use the stat function to fill the data, and then compare it to see if it matches*/
-    struct stat from;
-    struct stat to;
-    stat(argv[pos], &from);
-    stat(argv[pos + 1], &to);
     /* Comparing the specific data of the files and where are they*/
-    if (from.st_dev == to.st_dev && from.st_ino == to.st_ino)
-    {
-        write(1, "Input files are the same file or hardlinks\n", 44);
-        return (0);
-    }
+    if (from != NULL && to != NULL)
+        if (from->st_dev == to->st_dev && from->st_ino == to->st_ino)
+        {
+            write(2, "Input files are the same file or hardlinks\n", 44);
+            return (0);
+        }
     return (1);
 }
 
-int check_buffer(char **argv, int *argv_pos, int *buffer_size)
+int create_stat(int fd, struct stat *data)
 {
-    if (et_strcmp(argv[*argv_pos], "-b") == 0)
+
+    if (fd < 0)
+        return (1);
+    if (fstat(fd, data) < 0)
+        return (1);
+    return (0);
+}
+
+int check_buffer(char **argv, int *argvPos, int *bufferSize)
+{
+    if (ef_strcmp(argv[*argvPos], "-b") == 0)
     {
-        (*argv_pos)++;
-        if ((*buffer_size) = et_atoi(argv[*argv_pos]), *buffer_size < 1)
+        (*argvPos)++;
+        if ((*bufferSize) = ef_atoi(argv[*argvPos]), *bufferSize < 1)
         {
             write(1, "The buffer size must be a number greater than 0\n", 49);
             return (0);
         }
-        (*argv_pos)++;
+        (*argvPos)++;
     }
-    if ((*buffer_size) == -1)
-        (*buffer_size) = 65536;
+    if ((*bufferSize) == -1)
+        (*bufferSize) = 65536;
     return (1);
 }
 
@@ -97,40 +133,57 @@ int check_inputs(int argc)
     return (1);
 }
 
+int error_handler(char *error)
+{
+    while (*error && write(2, error, 1) == 1)
+            error++;
+    write(2, "\n", 1);
+    return (1);
+}
+
 int main(int argc, char **argv)
 {
-	int	buffer_size;
-    int read_fd;
-    int write_fd;
-    int argv_pos;
+	int	bufferSize;
+    int readFd;
+    int writeFd;
+    int argvPos;
+    struct stat from;
+    struct stat to;
     char *buffer;
-    buffer_size = -1;
-    argv_pos = 1;
+
+    bufferSize = -1;
+    argvPos = 1;
     if (check_inputs(argc) == 0)
-        return (0);
-    if (check_buffer(argv, &argv_pos, &buffer_size) == 0)
-        return (0);
-    if (check_stat(argv, argv_pos) == 0)
-        return (0);
-    buffer = malloc(sizeof(char) * buffer_size + 1);
-    if (!buffer)
         return (1);
-    
-    read_fd = open(argv[argv_pos], O_RDONLY, 0);
-    argv_pos++;
-    write_fd = open(argv[argv_pos], O_CREAT | O_RDWR, 0);
-    if (read_fd < 0 || write_fd < 0)
+    if (check_buffer(argv, &argvPos, &bufferSize) == 0)
+        return (1);
+
+    readFd = open(argv[argvPos], O_RDONLY);
+    if (readFd < 0)
+        return (error_handler(strerror(errno)));
+    create_stat(readFd, &from);
+
+    argvPos++;
+    if (stat(argv[argvPos], &to) >= 0)
+        if (check_stat(&from, &to) == 0)
+            return (error_handler(strerror(errno)));
+
+    mode_t mode = from.st_mode & 07777;
+    writeFd = open(argv[argvPos], O_CREAT | O_WRONLY | O_TRUNC, mode);
+    if (writeFd < 0)
+        return (error_handler(strerror(errno)));
+
+    buffer = malloc(sizeof(char) * bufferSize + 1);
+    if (!buffer)
     {
-        if (read_fd > 0)
-            close(read_fd);
-        if (write_fd > 0)
-            close(write_fd);
-        free(buffer);
-        return (0);
+        close(readFd);
+        close(writeFd);
+        return (1);
     }
-    pasting(read_fd, write_fd, buffer, buffer_size);
-    close(read_fd);
-    close(write_fd);
+    if (pasting(readFd, writeFd, buffer, bufferSize) == 1)
+        unlink(argv[argvPos]);
+    close(readFd);
+    close(writeFd);
     free(buffer);
-    return (1);
+    return (0);
 }

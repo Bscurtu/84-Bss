@@ -9,7 +9,7 @@ int	ef_strcmp(char *str1, char *str2)
 	{
 		if (*str1 != *str2)
 		{
-			return ((int) *str1 - (int) *str2);
+			return ((unsigned char) *str1 - (unsigned char) *str2);
 		}
 		str2++;
 		str1++;
@@ -28,63 +28,65 @@ void ef_putstr(char *str)
 	}
 }
 
-void ef_error(int index, int error, char *filename)
+void ef_error(int error, char *filename)
 {
-	if (index != 1)
-		write(1, "\n", 1);
 	write(2, "mcat: ", 6);
 	ef_putstr(filename);
-	if (error == 1)
-		write(2, ": No such file or directory\n", 28);
-	if (error == 2)
-		write(2, ": Is a directory\n", 18);
+	write(2, ": ", 2);
+	ef_putstr(strerror(error));
 }
 
-void et_fileIteration(int index, int argc, char **argv, int *returned)
+int copy_fd(int fd, char *buffer, int buffer_size, int *returned, int *error)
 {
-	char buffer[100];
+    int n;
+
+    while ((n = read(fd, buffer, buffer_size)) > 0)
+    {
+		if (write(1, buffer, n) != n)
+		{
+			*error = errno;
+			*returned = 1;
+			return (-1);
+		}
+	}
+	if (n < 0)
+	{
+		*error = errno;
+		*returned = 1;
+		return (-1);
+	}
+	return (0);
+}
+
+void ef_fileIteration(int index, int argc, char **argv, int *returned)
+{
+	char buffer[4096];
 	int actual_fd;
-	int readed;
+	int error;
 
 	for (;index < argc; index++)
 	{
+		actual_fd = -1;
 		if (ef_strcmp(argv[index], "-") == 0)
+			copy_fd(0, buffer, 100, returned, &error);
+		else
 		{
-			readed = 1;
-				while (readed > 0)
-				{
-					readed = read(0, &buffer, 100);
-					if (readed > 0)
-						write(1, &buffer, readed);
-				}
+			actual_fd = open(argv[index], O_RDONLY);
+			if (actual_fd < 0)
+			{
+				error = errno;
+				ef_error(error, argv[index]);
+				*returned = 1;
 			}
 			else
 			{
-				actual_fd = open(argv[index], O_RDONLY);
-				if (actual_fd < 0)
-				{
-					*returned = 1;
-					ef_error(index, 1, argv[index]);
-				}
-				else
-				{
-					readed = 1;
-					while (readed > 0)
-					{
-						readed = read(actual_fd, &buffer, 100);
-						if (readed == -1 && errno == EISDIR)
-						{
-							*returned = 1;
-							ef_error(index, 2, argv[index]);
-							break ;
-						}
-						write(1, &buffer, readed);
-					}
-				}
-				if (actual_fd > 0)
-					close(actual_fd);
+				if (copy_fd(actual_fd, buffer, 4096, returned, &error) == -1)
+					ef_error(error, argv[index]);
 			}
 		}
+		if (actual_fd >= 2)
+			close(actual_fd);
+	}
 }
 
 int main(int argc, char **argv)
@@ -101,11 +103,12 @@ int main(int argc, char **argv)
 		readed = 1;
 		while (readed > 0)
 		{
-			readed = read(0, &buffer, 100);
-			write(1, &buffer, readed);
+			readed = read(0, buffer, 100);
+			if (readed > 0)
+				write(1, &buffer, readed);
 		}
 	}
 	else
-		et_fileIteration(index, argc, argv, &returned);
+		ef_fileIteration(index, argc, argv, &returned);
 	return (returned);
 }
