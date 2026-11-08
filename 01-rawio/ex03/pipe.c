@@ -101,7 +101,8 @@ char *append_char(char *str, int *len, char c) {
     return new_str;
 }
 
-void process_stream_input(int fd, int n_lines) {
+void process_stream_input(int fd, int n_lines)
+{
     circular_buffer *cb = init_buffer(n_lines);
     if (!cb)
         return;
@@ -110,9 +111,14 @@ void process_stream_input(int fd, int n_lines) {
     int bytes_read;
     char *current_line = NULL;
     int line_len = 0;
-
     while ((bytes_read = read(fd, buffer, sizeof(buffer))) > 0)
     {
+		if (bytes_read < 0)
+		{
+			print_error();
+			free_buffer(cb);
+			return ;
+		}
         for (int i = 0; i < bytes_read; i++)
         {
             current_line = append_char(current_line, &line_len, buffer[i]);
@@ -124,9 +130,10 @@ void process_stream_input(int fd, int n_lines) {
             }
         }
     }
-    if (current_line != NULL && line_len > 0) {
+	if (bytes_read < 0)
+		print_error();
+    else if (current_line != NULL && line_len > 0)
         buffer_add_line(cb, current_line);
-    }
     print_buffer(cb);
     free_buffer(cb);
 }

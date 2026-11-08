@@ -19,7 +19,6 @@ int parse_args(int ac, char **av, ssize_t *n_lines, int *file_index)
         *file_index = 1;
         *n_lines = 10;
     }
-
     if (*n_lines < 0)
         return (-1);
     return (0);

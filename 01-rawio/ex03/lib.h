@@ -9,8 +9,6 @@
     #define BLOCK 4096
 #endif
 
-//Me dan el archivo -> Compruebo si me han dado -n -> Abro el archivo -> Voy al final -> leo y busco los saltos de linea -> lo vuelvo a leer(tamaño max 8192) y lo escribo
-
 /* ################## <OPEN_FILE.C> ################## */
 
 /**
@@ -156,3 +154,5 @@ int print_lines(int fd, off_t offset);
 
 
 void process_stream_input(int fd, int n_lines);
+
+void print_error();

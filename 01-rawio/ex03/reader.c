@@ -35,6 +35,8 @@ off_t read_file(int fd, int n_lines)
     while (found == 0)
     {
         readed = read(fd, buffer, BLOCK);
+		if (readed < 0)
+			return -1;
         if (offset == 0)
             readed -= 1;
         found = searcher_index(buffer, readed, &offset, n_lines);
